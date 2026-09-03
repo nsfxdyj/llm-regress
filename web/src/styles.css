@@ -1,0 +1,82 @@
+:root {
+  --bg: #faf9f7;
+  --ink: #1c1b1a;
+  --muted: #6b6660;
+  --line: #e3e0da;
+  --accent: #b3410f;
+  --ok: #1a7f4b;
+  --bad: #b3261e;
+  --mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.layout { max-width: 960px; margin: 0 auto; padding: 0 24px 64px; }
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 32px;
+}
+.brand { font-family: var(--mono); font-weight: 700; font-size: 18px; color: var(--ink); text-decoration: none; }
+.tagline { color: var(--muted); font-size: 13px; }
+
+h1 { font-size: 22px; margin: 0 0 16px; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+a { color: var(--accent); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 13px; }
+
+button {
+  font: inherit;
+  padding: 6px 14px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button.ghost { background: transparent; color: var(--ink); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+input, textarea {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+}
+textarea.yaml-editor {
+  width: 100%;
+  min-height: 320px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+.badge.bad { color: var(--bad); border-color: var(--bad); }
+.badge.regression { background: var(--bad); color: #fff; border-color: var(--bad); }
+
+.error-box { border: 1px solid var(--bad); color: var(--bad); padding: 10px 14px; border-radius: 4px; margin: 12px 0; }
+.notice-box { border: 1px solid var(--ok); color: var(--ok); padding: 10px 14px; border-radius: 4px; margin: 12px 0; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 13px; }
+.row { display: flex; gap: 12px; align-items: center; }
+pre.detail { background: #f1efec; padding: 10px 14px; border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; }
