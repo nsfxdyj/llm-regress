@@ -1,6 +1,11 @@
 # tests/test_comment.py
+import io
+from urllib.error import HTTPError, URLError
+
 import pytest
 from typer.testing import CliRunner
+
+from llm_regress.github_api import GitHubAPI
 
 from llm_regress import cli
 from llm_regress.github_api import COMMENT_MARKER, GitHubAPIError
@@ -172,3 +177,46 @@ def test_judge_changed_still_posts_with_warning(tmp_path, monkeypatch, token):
     assert body.startswith("> ⚠️ Judge changed")
     assert "jf-OLD" in body
     assert COMMENT_MARKER in body
+
+
+def test_corrupt_baseline_still_posts_with_warning(tmp_path, monkeypatch, token):
+    monkeypatch.chdir(tmp_path)
+    # Baseline file exists but is invalid JSON -> load_baseline raises
+    # ValueError (pydantic ValidationError); must degrade, never crash.
+    bp = tmp_path / ".llm-regress" / "baselines"
+    bp.mkdir(parents=True)
+    (bp / "demo.json").write_text("{corrupt", encoding="utf-8")
+
+    transport = FakeTransport()
+    result = invoke(tmp_path, monkeypatch, transport)
+    assert result.exit_code == 0, result.output
+    assert transport.methods() == ["GET", "POST"]
+    body = transport.last_body()
+    assert body.startswith("> ⚠️ 基线文件损坏，已按无对比模式生成评论")
+    assert "## llm-regress 报告" in body
+    assert COMMENT_MARKER in body
+    assert "Corrupt baseline" in combined_output(result)
+
+
+def test_request_maps_http_error(monkeypatch):
+    """Real GitHubAPI._request error mapping, no network: urlopen stubbed."""
+    def raise_http(req, timeout):
+        fp = io.BytesIO(b'{"message": "Forbidden"}')
+        raise HTTPError(req.full_url, 403, "Forbidden", None, fp)
+
+    monkeypatch.setattr("llm_regress.github_api.urlopen", raise_http)
+    with pytest.raises(GitHubAPIError) as excinfo:
+        GitHubAPI("tok")._request("GET", "/repos/o/n/issues/1/comments")
+    assert excinfo.value.status == 403
+    assert "Forbidden" in excinfo.value.body
+
+
+def test_request_maps_url_error_to_status_zero(monkeypatch):
+    def raise_url(req, timeout):
+        raise URLError("Name or service not known")
+
+    monkeypatch.setattr("llm_regress.github_api.urlopen", raise_url)
+    with pytest.raises(GitHubAPIError) as excinfo:
+        GitHubAPI("tok")._request("GET", "/repos/o/n/issues/1/comments")
+    assert excinfo.value.status == 0
+    assert "Name or service not known" in excinfo.value.body

@@ -166,12 +166,21 @@ def _post_comment(repo: str, pr: int, run_file: Path) -> int:
     bp = baseline_path(run.suite_name, Path.cwd())
     if bp.exists():
         try:
-            comparison = compare(run, load_baseline(bp))
-        except JudgeChangedError as e:
-            # Judge fingerprint mismatch: degrade to no-comparison and warn at
-            # the top of the comment body — never fail the comment.
-            typer.echo(str(e), err=True)
-            warning = f"> ⚠️ {e}\n\n"
+            baseline = load_baseline(bp)
+        except ValueError as e:
+            # Corrupt baseline (invalid JSON / schema mismatch, pydantic
+            # ValidationError subclasses ValueError): degrade to no-comparison
+            # and warn at the top of the comment body — never fail the comment.
+            typer.echo(f"Corrupt baseline {bp}: {e}", err=True)
+            warning = "> ⚠️ 基线文件损坏，已按无对比模式生成评论\n\n"
+        else:
+            try:
+                comparison = compare(run, baseline)
+            except JudgeChangedError as e:
+                # Judge fingerprint mismatch: degrade to no-comparison and warn at
+                # the top of the comment body — never fail the comment.
+                typer.echo(str(e), err=True)
+                warning = f"> ⚠️ {e}\n\n"
     body = warning + render_markdown_summary(run, comparison) + f"\n\n{COMMENT_MARKER}"
 
     api = GitHubAPI(token)
