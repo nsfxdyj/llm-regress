@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import typer
@@ -14,9 +15,10 @@ from .baseline import (
     load_baseline,
     save_baseline,
 )
-from .ci_report import emit_reports, validate_report_options
+from .ci_report import emit_reports, render_markdown_summary, validate_report_options
 from .evaluators.factory import EvaluatorConfigError
-from .models import CaseStatus, TestSuite
+from .github_api import COMMENT_MARKER, GitHubAPI, GitHubAPIError, find_bot_comment
+from .models import CaseStatus, RunResult, TestSuite
 from .providers.base import LLMClient, ProviderError
 from .providers.openai_compat import OpenAICompatClient
 from .report import render_console, write_run_json
@@ -142,3 +144,57 @@ def baseline(
 ):
     """运行用例集并把结果保存为基线。"""
     raise typer.Exit(code=_execute(suite_file, concurrency, save=True, formats=formats, outputs=outputs))
+
+
+def _post_comment(repo: str, pr: int, run_file: Path) -> int:
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        typer.echo(
+            "GITHUB_TOKEN environment variable is not set; "
+            "export a token with pull-requests/issues write access.",
+            err=True,
+        )
+        return 3
+    try:
+        run = RunResult.model_validate_json(run_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        typer.echo(f"Failed to load run file {run_file}: {e}", err=True)
+        return 3
+
+    comparison: Comparison | None = None
+    warning = ""
+    bp = baseline_path(run.suite_name, Path.cwd())
+    if bp.exists():
+        try:
+            comparison = compare(run, load_baseline(bp))
+        except JudgeChangedError as e:
+            # Judge fingerprint mismatch: degrade to no-comparison and warn at
+            # the top of the comment body — never fail the comment.
+            typer.echo(str(e), err=True)
+            warning = f"> ⚠️ {e}\n\n"
+    body = warning + render_markdown_summary(run, comparison) + f"\n\n{COMMENT_MARKER}"
+
+    api = GitHubAPI(token)
+    try:
+        existing = find_bot_comment(api.list_comments(repo, pr))
+        if existing is not None:
+            resp = api.update_comment(repo, existing, body)
+        else:
+            resp = api.create_comment(repo, pr, body)
+    except GitHubAPIError as e:
+        typer.echo(
+            f"GitHub API error (status {e.status}): {e.body[:500]}", err=True
+        )
+        return 3
+    typer.echo(f"Comment posted: {resp.get('html_url', '')}")
+    return 0
+
+
+@app.command()
+def comment(
+    repo: str = typer.Option(..., "--repo", help="仓库，形如 owner/name"),
+    pr: int = typer.Option(..., "--pr", min=1, help="Pull Request 编号"),
+    run_file: Path = typer.Option(..., "--run-file", help="运行结果 JSON（.llm-regress/runs/xxx.json）"),
+):
+    """把运行结果作为评论发布（或幂等更新）到 GitHub PR。"""
+    raise typer.Exit(code=_post_comment(repo, pr, run_file))
