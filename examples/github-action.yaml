@@ -1,0 +1,64 @@
+# llm-regress 示例工作流 —— 复制到你的仓库为 .github/workflows/llm-regress.yaml
+#
+# 效果：每次 PR 都会运行用例集并与基线对比，
+#   - 有回归时工作流失败（退出码 1）；
+#   - HTML 报告作为 artifact 上传；
+#   - 结果摘要作为评论发布（或幂等更新）到 PR。
+#
+# 前置条件：
+#   1. 仓库里有用例集（llm-regress init suite.yaml）并已建立基线
+#      （llm-regress baseline suite.yaml，基线文件在 .llm-regress/baselines/，需提交）。
+#   2. 在仓库 Settings → Secrets 里配置用例集 api_key_env 对应的密钥
+#      （默认示例为 DEEPSEEK_API_KEY）。
+
+name: llm-regress
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write # PR 评论步骤需要
+
+jobs:
+  llm-regress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 运行回归测试：console 之外额外产出 HTML 报告。
+      # 想要 GitHub 原生 ::error 注解 + Job Summary 时改用 format: github
+      # （github 格式不消费 output，可省略 output 输入）。
+      - name: 运行回归测试
+        uses: nsfxdyj/llm-regress@main
+        with:
+          suite-file: suite.yaml
+          format: html
+          output: llm-regress-report.html
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+      - name: 上传 HTML 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-regress-report
+          path: llm-regress-report.html
+          if-no-files-found: ignore
+
+      # 即使测试失败也发布评论；评论正文与 GitHub Job Summary 共用同一份
+      # markdown，重复执行会更新同一条评论（幂等）。
+      - name: 评论 PR
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run_file=$(ls -t .llm-regress/runs/*.json 2>/dev/null | head -1)
+          if [ -z "$run_file" ]; then
+            echo "No run file found; skipping PR comment."
+            exit 0
+          fi
+          llm-regress comment \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --run-file "$run_file"

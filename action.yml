@@ -1,0 +1,40 @@
+name: llm-regress
+description: LLM 应用回归测试（CI for prompts）
+inputs:
+  suite-file:
+    description: 用例集 YAML 路径（llm-regress run 的第一个参数）
+    required: true
+  python-version:
+    description: 用于安装并运行 llm-regress 的 Python 版本
+    required: false
+    default: "3.12"
+  format:
+    description: >-
+      额外报告格式：github（默认，输出 ::error 注解并写入 Job Summary，
+      不消费 output）| junit | html | console。console 永远会照常打印到 stdout。
+    required: false
+    default: "github"
+  output:
+    description: >-
+      报告输出路径。仅当 format 为 junit / html 时生效（文件类格式才消费
+      --output，且与文件类 --format 按顺序一一配对）；format 为 github / console
+      时该输入被忽略。
+    required: false
+    default: "llm-regress-report.xml"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - shell: bash
+      run: pip install "${{ github.action_path }}"
+    # --output 只在文件类格式（junit/html）下传入：github 不消费 --output，
+    # 无条件传入会触发 CLI 的配对校验错误（退出码 3）。
+    - shell: bash
+      run: |
+        args=(run "${{ inputs.suite-file }}" --format console --format "${{ inputs.format }}")
+        case "${{ inputs.format }}" in
+          junit|html) args+=(--output "${{ inputs.output }}") ;;
+        esac
+        llm-regress "${args[@]}"
