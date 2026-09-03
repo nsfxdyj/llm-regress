@@ -7,12 +7,14 @@ from pathlib import Path
 import typer
 
 from .baseline import (
+    Comparison,
     JudgeChangedError,
     baseline_path,
     compare,
     load_baseline,
     save_baseline,
 )
+from .ci_report import emit_reports, validate_report_options
 from .evaluators.factory import EvaluatorConfigError
 from .models import CaseStatus, TestSuite
 from .providers.base import LLMClient, ProviderError
@@ -65,7 +67,16 @@ def init(path: Path = typer.Argument(Path("suite.yaml"), help="要生成的示�
     typer.echo(f"Created {path}. Edit it, then run: llm-regress baseline {path}")
 
 
-def _execute(suite_file: Path, concurrency: int, save: bool) -> int:
+def _execute(
+    suite_file: Path,
+    concurrency: int,
+    save: bool,
+    formats: list[str],
+    outputs: list[Path],
+) -> int:
+    if (msg := validate_report_options(formats, outputs)) is not None:
+        typer.echo(msg, err=True)
+        return 3
     try:
         suite = load_suite(suite_file)
         target, judge = _make_clients(suite)
@@ -82,6 +93,8 @@ def _execute(suite_file: Path, concurrency: int, save: bool) -> int:
     typer.echo(f"Run recorded: {run_path}")
 
     root = Path.cwd()
+    comparison: Comparison | None = None
+    exit_code = 0
     if save:
         save_baseline(run, root)
         typer.echo(render_console(run))
@@ -97,13 +110,16 @@ def _execute(suite_file: Path, concurrency: int, save: bool) -> int:
                 return 3
             typer.echo(render_console(run, comparison))
             if comparison.has_regressions:
-                return 1
+                exit_code = 1
         else:
             typer.echo(render_console(run))
             typer.echo(f"No baseline at {bp}; run `llm-regress baseline {suite_file}` to create one.")
-    if any(r.status == CaseStatus.ERROR for r in run.results):
-        return 2
-    return 0
+    if exit_code == 0 and any(r.status == CaseStatus.ERROR for r in run.results):
+        exit_code = 2
+    override = emit_reports(
+        run, comparison, formats, outputs, err=lambda m: typer.echo(m, err=True)
+    )
+    return override if override is not None else exit_code
 
 
 @app.command()
@@ -111,14 +127,18 @@ def run(
     suite_file: Path = typer.Argument(..., help="用例集 YAML 路径"),
     save_baseline: bool = typer.Option(False, "--save-baseline", help="运行并把结果保存为新基线"),
     concurrency: int = typer.Option(4, "--concurrency", "-c", min=1, help="并发调用上限"),
+    formats: list[str] = typer.Option(["console"], "--format", help="报告格式，可重复传入：console|junit"),
+    outputs: list[Path] = typer.Option([], "--output", help="报告输出路径，可重复；按顺序与文件类 --format（junit）一一配对"),
 ):
-    raise typer.Exit(code=_execute(suite_file, concurrency, save_baseline))
+    raise typer.Exit(code=_execute(suite_file, concurrency, save_baseline, formats, outputs))
 
 
 @app.command()
 def baseline(
     suite_file: Path = typer.Argument(..., help="用例集 YAML 路径"),
     concurrency: int = typer.Option(4, "--concurrency", "-c", min=1, help="并发调用上限"),
+    formats: list[str] = typer.Option(["console"], "--format", help="报告格式，可重复传入：console|junit"),
+    outputs: list[Path] = typer.Option([], "--output", help="报告输出路径，可重复；按顺序与文件类 --format（junit）一一配对"),
 ):
     """运行用例集并把结果保存为基线。"""
-    raise typer.Exit(code=_execute(suite_file, concurrency, save=True))
+    raise typer.Exit(code=_execute(suite_file, concurrency, save=True, formats=formats, outputs=outputs))
