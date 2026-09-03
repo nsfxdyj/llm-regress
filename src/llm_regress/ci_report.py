@@ -173,11 +173,201 @@ def render_markdown_summary(run: RunResult, comparison: Comparison | None = None
     return "\n".join(lines)
 
 
+# --- Standalone HTML report (M4-T3) ---------------------------------------
+
+_HTML_STYLE = """\
+:root{--fg:#24292f;--muted:#6a737d;--line:#e3e6eb;--bg:#f5f6f8;
+--ok:#2da44e;--bad:#cf222e;--warn:#bf8700;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);line-height:1.6;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+.wrap{max-width:920px;margin:0 auto;padding:32px 20px 64px}
+header h1{font-size:22px;margin:0 0 6px}
+.meta{color:var(--muted);font-size:13px}
+.meta .mono{background:#fff;border:1px solid var(--line);border-radius:4px;padding:0 5px}
+.summary{display:flex;gap:12px;flex-wrap:wrap;margin:22px 0 28px}
+.stat{flex:1;min-width:110px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 16px}
+.stat .num{font-size:26px;font-weight:600;line-height:1.2}
+.stat .label{font-size:12px;color:var(--muted)}
+.stat.ok .num{color:var(--ok)}
+.stat.reg .num{color:var(--bad)}
+.stat.err .num{color:var(--warn)}
+.card{background:#fff;border:1px solid var(--line);border-left:4px solid var(--line);
+border-radius:8px;padding:16px 20px;margin-bottom:16px}
+.card.s-ok{border-left-color:var(--ok)}
+.card.s-reg,.card.s-fail{border-left-color:var(--bad)}
+.card.s-err{border-left-color:var(--warn)}
+.card-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.case-id{font-weight:600;font-size:15px}
+.badge{font-size:12px;padding:2px 10px;border-radius:999px;font-weight:600}
+.badge.ok{background:#e6f4ea;color:var(--ok)}
+.badge.bad{background:#fdeceb;color:var(--bad)}
+.badge.warn{background:#fdf3dd;color:var(--warn)}
+.chip{font-size:12px;padding:2px 8px;border-radius:999px;background:#eef1f4;color:var(--muted)}
+.score{margin-left:auto;color:var(--muted);font-size:14px}
+.score .mono{color:var(--fg);font-weight:600}
+.field{margin-top:12px}
+.field .label{font-size:12px;color:var(--muted);margin-bottom:4px}
+pre{margin:0;background:#f6f8fa;border:1px solid var(--line);border-radius:6px;
+padding:10px 12px;white-space:pre-wrap;word-break:break-word;font-size:13px;
+font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+ul.evals{margin:6px 0 0;padding-left:20px;font-size:13px}
+ul.evals li{margin:2px 0}
+details{margin-top:12px}
+summary{cursor:pointer;color:var(--muted);font-size:13px}
+footer{margin-top:36px;color:var(--muted);font-size:12px;text-align:center}
+"""
+
+
+def _html_field(label: str, text: str) -> str:
+    """One labelled <pre> block; ``text`` must already be escaped."""
+    return (
+        f'<div class="field"><div class="label">{label}</div>'
+        f"<pre>{text}</pre></div>"
+    )
+
+
+def _render_case_card(run: RunResult, r, delta) -> str:
+    """Render one case card. Every embedded text fragment is html-escaped."""
+    import html as _html
+
+    esc = _html.escape
+    is_error = r.status == CaseStatus.ERROR
+    is_regression = (
+        delta is not None
+        and delta.change == "regression"
+        and r.status != CaseStatus.ERROR
+    )
+    if is_error:
+        state, badge_cls, badge = "s-err", "warn", "错误"
+    elif is_regression:
+        state, badge_cls, badge = "s-reg", "bad", "回归"
+    elif not r.passed:
+        state, badge_cls, badge = "s-fail", "bad", "失败"
+    else:
+        state, badge_cls, badge = "s-ok", "ok", "通过"
+
+    if is_error:
+        score_html = '<span class="mono">—</span>'
+    elif delta is not None and delta.old_score is not None and delta.new_score is not None:
+        score_html = (
+            f'<span class="mono">{delta.old_score:.2f} → {delta.new_score:.2f}</span>'
+        )
+    else:
+        score_html = f'<span class="mono">{r.score:.2f}</span>'
+
+    chip = ""
+    if delta is not None and delta.change in ("improved", "new", "unchanged"):
+        chip = f'<span class="chip">{_CHANGE_LABELS[delta.change]}</span>'
+
+    parts = [
+        f'<section class="card {state}">',
+        '<div class="card-head">',
+        f'<span class="case-id mono">{esc(r.case_id)}</span>',
+        f'<span class="badge {badge_cls}">{badge}</span>',
+        chip,
+        f'<span class="score">分数 {score_html}</span>',
+        "</div>",
+    ]
+    if r.input:
+        parts.append(_html_field("输入", esc(r.input)))
+    if is_error:
+        parts.append(_html_field("错误信息", esc(r.error or "unknown error")))
+    else:
+        parts.append(_html_field("模型输出", esc(r.output)))
+    if r.expected:
+        parts.append(_html_field("期望输出", esc(r.expected)))
+    failing = [e for e in r.evals if not e.passed]
+    if failing:
+        items = "".join(
+            f'<li><span class="mono">[{esc(e.evaluator)}]</span> {esc(e.detail)}</li>'
+            for e in failing
+        )
+        parts.append(
+            f'<div class="field"><div class="label">失败评测明细</div>'
+            f'<ul class="evals">{items}</ul></div>'
+        )
+    for e in r.evals:
+        if e.raw:
+            parts.append(
+                f"<details><summary>裁判原始输出 · "
+                f'<span class="mono">{esc(e.evaluator)}</span></summary>'
+                f"<pre>{esc(e.raw)}</pre></details>"
+            )
+    parts.append("</section>")
+    return "\n".join(p for p in parts if p)
+
+
+def render_html(run: RunResult, comparison: Comparison | None = None) -> str:
+    """Render a standalone single-file HTML report for one run.
+
+    Inline ``<style>`` only — no external resources, no JS. Every piece of
+    embedded text (case_id, input, output, expected, error, evaluator
+    details, judge raw output) goes through ``html.escape``; model output
+    may contain arbitrary markup. ``removed`` deltas are skipped — the run
+    did not execute those cases.
+    """
+    import html as _html
+
+    esc = _html.escape
+    delta_by_id = {d.case_id: d for d in comparison.deltas} if comparison else {}
+    total = len(run.results)
+    passed_n = sum(
+        1 for r in run.results if r.status != CaseStatus.ERROR and r.passed
+    )
+    error_n = sum(1 for r in run.results if r.status == CaseStatus.ERROR)
+    reg_n = (
+        sum(1 for d in comparison.deltas if d.change == "regression")
+        if comparison
+        else 0
+    )
+    cards = "\n".join(
+        _render_case_card(run, r, delta_by_id.get(r.case_id)) for r in run.results
+    )
+    judge_line = ""
+    if run.judge_fingerprint:
+        judge_line = (
+            f' · Judge 指纹 <span class="mono">{esc(run.judge_fingerprint)}</span>'
+        )
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llm-regress 报告 · {esc(run.suite_name)}</title>
+<style>
+{_HTML_STYLE}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>llm-regress 报告</h1>
+<div class="meta">套件 <span class="mono">{esc(run.suite_name)}</span>
+· 开始时间 <span class="mono">{esc(run.started_at)}</span>
+· Target 指纹 <span class="mono">{esc(run.target_fingerprint)}</span>{judge_line}</div>
+</header>
+<section class="summary">
+<div class="stat ok"><div class="num">{passed_n}</div><div class="label">通过</div></div>
+<div class="stat reg"><div class="num">{reg_n}</div><div class="label">回归</div></div>
+<div class="stat err"><div class="num">{error_n}</div><div class="label">错误</div></div>
+<div class="stat"><div class="num">{total}</div><div class="label">总计</div></div>
+</section>
+{cards}
+<footer>由 llm-regress 生成的独立报告</footer>
+</div>
+</body>
+</html>
+"""
+
+
 # File-producing formats: name -> renderer(run, comparison) -> str.
-# Later tasks register "html" here; "github" is stdout-producing and gets
-# its own dispatch branch in emit_reports (see _STDOUT_FORMATS).
+# "github" is stdout-producing and gets its own dispatch branch in
+# emit_reports (see _STDOUT_FORMATS).
 _FILE_RENDERERS: dict[str, Callable[[RunResult, Comparison | None], str]] = {
     "junit": render_junit,
+    "html": render_html,
 }
 
 # Stdout-producing formats (annotations to stdout instead of a report file).

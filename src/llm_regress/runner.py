@@ -59,6 +59,7 @@ class Runner:
             except asyncio.TimeoutError:
                 return CaseResult(
                     case_id=case.id, status=CaseStatus.ERROR,
+                    input=case.input, expected=case.expected,
                     error=f"case timed out after {self._case_timeout}s",
                 )
 
@@ -66,7 +67,10 @@ class Runner:
         try:
             resp = await self._target.complete([{"role": "user", "content": case.input}])
         except Exception as e:
-            return CaseResult(case_id=case.id, status=CaseStatus.ERROR, error=str(e))
+            return CaseResult(
+                case_id=case.id, status=CaseStatus.ERROR,
+                input=case.input, expected=case.expected, error=str(e),
+            )
 
         evals: list[EvalResult] = []
         weighted: list[tuple[float, float]] = []
@@ -91,6 +95,8 @@ class Runner:
         return CaseResult(
             case_id=case.id,
             status=CaseStatus.OK,
+            input=case.input,
+            expected=case.expected,
             output=resp.content,
             evals=evals,
             score=score,

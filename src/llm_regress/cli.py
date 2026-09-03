@@ -127,8 +127,8 @@ def run(
     suite_file: Path = typer.Argument(..., help="用例集 YAML 路径"),
     save_baseline: bool = typer.Option(False, "--save-baseline", help="运行并把结果保存为新基线"),
     concurrency: int = typer.Option(4, "--concurrency", "-c", min=1, help="并发调用上限"),
-    formats: list[str] = typer.Option(["console"], "--format", help="报告格式，可重复传入：console|junit|github"),
-    outputs: list[Path] = typer.Option([], "--output", help="报告输出路径，可重复；按顺序与文件类 --format（junit）一一配对"),
+    formats: list[str] = typer.Option(["console"], "--format", help="报告格式，可重复传入：console|junit|github|html"),
+    outputs: list[Path] = typer.Option([], "--output", help="报告输出路径，可重复；按顺序与文件类 --format（junit/html）一一配对"),
 ):
     raise typer.Exit(code=_execute(suite_file, concurrency, save_baseline, formats, outputs))
 
@@ -137,8 +137,8 @@ def run(
 def baseline(
     suite_file: Path = typer.Argument(..., help="用例集 YAML 路径"),
     concurrency: int = typer.Option(4, "--concurrency", "-c", min=1, help="并发调用上限"),
-    formats: list[str] = typer.Option(["console"], "--format", help="报告格式，可重复传入：console|junit|github"),
-    outputs: list[Path] = typer.Option([], "--output", help="报告输出路径，可重复；按顺序与文件类 --format（junit）一一配对"),
+    formats: list[str] = typer.Option(["console"], "--format", help="报告格式，可重复传入：console|junit|github|html"),
+    outputs: list[Path] = typer.Option([], "--output", help="报告输出路径，可重复；按顺序与文件类 --format（junit/html）一一配对"),
 ):
     """运行用例集并把结果保存为基线。"""
     raise typer.Exit(code=_execute(suite_file, concurrency, save=True, formats=formats, outputs=outputs))

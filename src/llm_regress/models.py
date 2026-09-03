@@ -49,6 +49,8 @@ class CaseStatus(str, Enum):
 class CaseResult(BaseModel):
     case_id: str
     status: CaseStatus = CaseStatus.OK
+    input: str | None = None  # 用例输入快照，供 HTML 等报告展示；旧 JSON 缺省兼容
+    expected: str | None = None  # 期望输出快照（如有）
     output: str = ""
     evals: list[EvalResult] = Field(default_factory=list)
     score: float = 0.0
