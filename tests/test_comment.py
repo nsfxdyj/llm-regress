@@ -198,6 +198,26 @@ def test_corrupt_baseline_still_posts_with_warning(tmp_path, monkeypatch, token)
     assert "Corrupt baseline" in combined_output(result)
 
 
+def test_unreadable_baseline_still_posts_with_warning(tmp_path, monkeypatch, token):
+    monkeypatch.chdir(tmp_path)
+    # Baseline path exists but is a directory -> load_baseline raises
+    # IsADirectoryError (an OSError). A directory is used instead of chmod 000
+    # because permission checks are unreliable when tests run as root.
+    bp = tmp_path / ".llm-regress" / "baselines"
+    bp.mkdir(parents=True)
+    (bp / "demo.json").mkdir()
+
+    transport = FakeTransport()
+    result = invoke(tmp_path, monkeypatch, transport)
+    assert result.exit_code == 0, result.output
+    assert transport.methods() == ["GET", "POST"]
+    body = transport.last_body()
+    assert body.startswith("> ⚠️ 基线文件损坏，已按无对比模式生成评论")
+    assert "## llm-regress 报告" in body
+    assert COMMENT_MARKER in body
+    assert "Corrupt baseline" in combined_output(result)
+
+
 def test_request_maps_http_error(monkeypatch):
     """Real GitHubAPI._request error mapping, no network: urlopen stubbed."""
     def raise_http(req, timeout):

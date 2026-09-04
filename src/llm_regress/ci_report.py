@@ -56,7 +56,12 @@ def render_junit(run: RunResult, comparison: Comparison | None = None) -> str:
             ET.SubElement(case, "error", {"message": r.error or "unknown error"})
         elif not r.passed:
             delta = delta_by_id.get(r.case_id)
-            if delta is not None and delta.old_score is not None and delta.new_score is not None:
+            if (
+                delta is not None
+                and delta.change == "regression"
+                and delta.old_score is not None
+                and delta.new_score is not None
+            ):
                 message = (
                     f"score {delta.new_score:.2f} below baseline {delta.old_score:.2f}"
                 )

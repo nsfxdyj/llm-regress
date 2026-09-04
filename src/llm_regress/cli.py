@@ -167,10 +167,11 @@ def _post_comment(repo: str, pr: int, run_file: Path) -> int:
     if bp.exists():
         try:
             baseline = load_baseline(bp)
-        except ValueError as e:
-            # Corrupt baseline (invalid JSON / schema mismatch, pydantic
-            # ValidationError subclasses ValueError): degrade to no-comparison
-            # and warn at the top of the comment body — never fail the comment.
+        except (OSError, ValueError) as e:
+            # Unreadable/corrupt baseline (OSError for IO failures; ValueError
+            # for invalid JSON / schema mismatch — pydantic ValidationError
+            # subclasses ValueError): degrade to no-comparison and warn at the
+            # top of the comment body — never fail the comment.
             typer.echo(f"Corrupt baseline {bp}: {e}", err=True)
             warning = "> ⚠️ 基线文件损坏，已按无对比模式生成评论\n\n"
         else:

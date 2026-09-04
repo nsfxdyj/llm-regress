@@ -195,6 +195,34 @@ def test_removed_deltas_excluded_and_new_cases_included():
     assert [c.get("name") for c in root.findall("testcase")] == ["new-case"]
 
 
+# --- 补充：非 regression 的 delta（unchanged/improved）失败 → 普通 message ---
+
+def test_unchanged_delta_failed_case_uses_plain_message():
+    # 失败但分数与基线相同（因其它评测项失败）：不得出现 "below baseline"。
+    run = make_run([CaseResult(case_id="c1", score=0.5, passed=False)])
+    comparison = Comparison(
+        deltas=[CaseDelta("c1", 0.5, 0.5, "unchanged")]
+    )
+    root = ET.fromstring(render_junit(run, comparison))
+    failure = root.find("testcase/failure")
+    assert failure is not None
+    assert failure.get("message") == "failed, score 0.50"
+    assert "below baseline" not in failure.get("message")
+
+
+def test_improved_but_failing_case_uses_plain_message():
+    # 分数高于基线但仍低于阈值：方向性上不是 "below baseline"。
+    run = make_run([CaseResult(case_id="c1", score=0.5, passed=False)])
+    comparison = Comparison(
+        deltas=[CaseDelta("c1", 0.3, 0.5, "improved")]
+    )
+    root = ET.fromstring(render_junit(run, comparison))
+    failure = root.find("testcase/failure")
+    assert failure is not None
+    assert failure.get("message") == "failed, score 0.50"
+    assert "below baseline" not in failure.get("message")
+
+
 # --- 补充：未知 format → 退出 3 ---
 
 def test_unknown_format_exit_3(tmp_path, fake_clients, monkeypatch):
