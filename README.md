@@ -79,7 +79,7 @@ cd web && npm install && npm run dev   # 前端 http://localhost:5173
 ## 开发
 
 ```bash
-pip install -e '.[dev]' && pytest          # 后端与核心（80+ 测试）
+pip install -e '.[dev]' && pytest          # 后端与核心（130+ 测试）
 cd web && npm test                          # 前端
 ```
 
