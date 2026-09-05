@@ -35,7 +35,9 @@ COMMANDS = ("run", "baseline", "comment", "init")
 
 def _help_flags() -> dict[str, set[str]]:
     """Introspect the real typer app: subcommand -> set of --flags in --help."""
-    runner = CliRunner()
+    # 固定终端宽度：CI runner 的终端宽度不确定（过窄时 rich 会省略选项面板，
+    # 导致解析不到任何 flag），这里钉死为 120 列保证输出稳定。
+    runner = CliRunner(env={"COLUMNS": "120"})
     flags: dict[str, set[str]] = {}
     for cmd in COMMANDS:
         result = runner.invoke(app, [cmd, "--help"])
