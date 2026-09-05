@@ -8,8 +8,8 @@
    input，runs.using 为 composite；
 3. 本仓库 CI 含 backend（pytest）与 frontend（npm）两个 job；
 4. README、示例 workflow、action.yml 中出现的每个 ``llm-regress`` CLI 选项
-   都真实存在于 typer app 对应子命令的 --help 输出里（选项通过 CliRunner
-   内省 cli.py 得到，不靠硬编码清单）。
+   都真实存在于 typer app 对应子命令的参数定义里（选项直接内省 click
+   命令对象得到，不靠硬编码清单，也不依赖 --help 的终端渲染）。
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 import yaml
-from typer.testing import CliRunner
+from typer.main import get_command
 
 from llm_regress.cli import app
 
@@ -34,15 +34,21 @@ COMMANDS = ("run", "baseline", "comment", "init")
 
 
 def _help_flags() -> dict[str, set[str]]:
-    """Introspect the real typer app: subcommand -> set of --flags in --help."""
-    # 固定终端宽度：CI runner 的终端宽度不确定（过窄时 rich 会省略选项面板，
-    # 导致解析不到任何 flag），这里钉死为 120 列保证输出稳定。
-    runner = CliRunner(env={"COLUMNS": "120"})
+    """Introspect the real typer app: subcommand -> set of --flags.
+
+    直接读取 click 命令对象的参数定义，而不是解析 --help 的渲染文本——
+    后者依赖终端宽度/rich 渲染，在 CI runner 等环境下不稳定。
+    """
+    root = get_command(app)
     flags: dict[str, set[str]] = {}
     for cmd in COMMANDS:
-        result = runner.invoke(app, [cmd, "--help"])
-        assert result.exit_code == 0, f"--help failed for {cmd}: {result.output}"
-        flags[cmd] = set(FLAG_RE.findall(result.output))
+        command = root.commands[cmd]
+        flags[cmd] = {
+            opt
+            for p in command.params
+            for opt in [*p.opts, *getattr(p, "secondary_opts", [])]
+            if opt.startswith("--")
+        }
     return flags
 
 
