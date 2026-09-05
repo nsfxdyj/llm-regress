@@ -5,7 +5,8 @@ LLM 应用的回归测试工具（CI for Prompts）。改了 prompt 或模型版
 ## Quickstart（CLI）
 
 ```bash
-pip install -e .
+pip install llm-regress-ci       # 从 PyPI 安装（包名 llm-regress-ci，命令仍为 llm-regress）
+# 或从源码安装：pip install -e .
 export DEEPSEEK_API_KEY=sk-...   # 任意 OpenAI 兼容端点
 llm-regress init suite.yaml      # 生成示例用例集
 llm-regress baseline suite.yaml  # 建立基线
