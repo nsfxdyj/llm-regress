@@ -1,5 +1,8 @@
 name: llm-regress
 description: LLM 应用回归测试（CI for prompts）
+branding:
+  icon: check-circle
+  color: green
 inputs:
   suite-file:
     description: 用例集 YAML 路径（llm-regress run 的第一个参数）
